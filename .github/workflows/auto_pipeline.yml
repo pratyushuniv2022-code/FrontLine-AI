@@ -51,10 +51,18 @@ jobs:
           echo "🔐 Exa API Key loaded: $([[ -n "$EXA_API_KEY" ]] && echo 'yes' || echo 'no')"
           python stratfor_india_agent.py
           mkdir -p data
-          cp data/latest_raw.json data/latest_raw_backup.json || echo "No raw file found."
+          if [ -f "../data/latest_raw.json" ]; then
+            echo "Found raw in parent; moving into repo data/"
+            mv ../data/latest_raw.json data/latest_raw.json
+          elif [ -f "data/latest_raw.json" ]; then
+            echo "Found raw in repo data/"
+          else
+            echo "❌ No raw file found."
+            exit 1
+            fi
 
       # -----------------------------
-      # 🧩 Run Summarization
+      # 🧠 Run Summarization
       # -----------------------------
       - name: Summarize articles
         env:
@@ -63,6 +71,19 @@ jobs:
           echo "🧠 Running summarizer with EXTRACT_SENTENCES=${EXTRACT_SENTENCES}"
           python summarization_stratfor.py
           mkdir -p data
+
+          # Handle both possible paths (repo/data and ../data)
+          if [ -f "../data/latest_summary.json" ]; then
+            echo "Found summary in parent; moving into repo data/"
+            mv ../data/latest_summary.json data/latest_summary.json
+          elif [ -f "data/latest_summary.json" ]; then
+            echo "Found summary in repo data/"
+          else
+            echo "❌ No summary file found."
+            exit 1
+          fi
+
+          # Make a backup for debugging
           cp data/latest_summary.json data/latest_summary_backup.json || echo "No summary file found."
 
       # -----------------------------
