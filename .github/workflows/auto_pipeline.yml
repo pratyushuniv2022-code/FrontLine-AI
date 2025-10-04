@@ -33,12 +33,12 @@ jobs:
         env:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: |
-          python scraper/scrape_stratfor_india.py
+          python scrape_stratfor_india.py
           test -s data/latest_raw.json
 
       - name: Summarize
         run: |
-          python scraper/extractive_summarize_clean.py
+          python extractive_summarize_clean.py
           test -s data/latest_summary.json
 
       - name: (Optional) keep history snapshots
