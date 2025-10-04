@@ -22,3 +22,6 @@ Thumbs.db
 # Data cache
 data/*.jsonl
 *.log
+health/ 
+__pycache__/ 
+.venv/ 
