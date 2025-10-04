@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 from exa_py import Exa
@@ -8,10 +9,17 @@ from exa_py import Exa
 # ------------------ CONFIG ------------------
 load_dotenv()
 EXA_API_KEY = os.getenv("EXA_API_KEY")  # Your Exa.ai API key
+if not EXA_API_KEY:
+    raise RuntimeError("EXA_API_KEY is missing. Set it as an env var / GitHub Actions secret.")
+
+# write into repo/data for the workflow
 OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "latest_raw.json")
 os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
-MAX_RESULTS_PER_QUERY = 20
+
+# performance tweaks
+MAX_RESULTS_PER_QUERY = int(os.getenv("MAX_RESULTS", 10))         # ↓ from 20 for faster runs
 INDIA_BOOST_FACTOR = 1.6
+MAX_CONCURRENCY = 4                 # limit concurrent Exa calls
 
 # ------------------ KEYWORDS & REGIONS ------------------
 KEYWORD_WEIGHTS = {
@@ -45,66 +53,59 @@ INDIA_REGION_PATTERNS = [
     r"\bChina\b", r"\bPakistan\b", r"\bMyanmar\b", r"\bBangladesh\b", r"\bNepal\b", r"\bSri Lanka\b"
 ]
 
-# ------------------ HELPER FUNCTIONS ------------------
-def clean_text(text):
+# ------------------ HELPERS ------------------
+def clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text)).strip() if text else ""
 
-def compute_severity_score(text):
+def compute_severity_score(text: str) -> int:
     s = (text or "").lower()
     score = 0
     for pat, wt in KEYWORD_WEIGHTS.items():
-        matches = re.findall(pat, s, flags=re.IGNORECASE)
-        if matches:
-            score += len(matches) * wt
-    # Boost if India region mentioned
+        hits = re.findall(pat, s, flags=re.IGNORECASE)
+        if hits:
+            score += len(hits) * wt
     for pat in INDIA_REGION_PATTERNS:
-        if re.search(pat, text, flags=re.IGNORECASE):
+        if re.search(pat, text or "", flags=re.IGNORECASE):
             score *= INDIA_BOOST_FACTOR
             break
     return int(score)
 
-def score_to_label(score):
-    if score >= 8:
-        return "critical"
-    if score >= 5:
-        return "high"
-    if score >= 2:
-        return "medium"
+def score_to_label(score: int) -> str:
+    if score >= 8: return "critical"
+    if score >= 5: return "high"
+    if score >= 2: return "medium"
     return "low"
 
-# ------------------ EXA.AI INTEGRATION ------------------
+# ------------------ EXA.AI ------------------
 exa = Exa(EXA_API_KEY)
 
-def exa_search_and_fetch(query, max_results=MAX_RESULTS_PER_QUERY):
-    """
-    Uses Exa.ai to search and fetch full content.
-    Returns list of dicts with url, title, snippet, full_text, score, label.
-    """
-    search_results = exa.search_and_contents(query, text=True, num_results=max_results)
-    articles = []
-
-    # Iterate over SearchResponse.results
-    for result in search_results.results:
-        url = getattr(result, "url", "")
-        title = clean_text(getattr(result, "title", ""))
-        # Exa may not provide snippet; fallback to empty
-        snippet = clean_text(getattr(result, "snippet", "") or getattr(result, "summary", ""))
-        # Full content may be in 'text', 'content', or 'body'
-        full_text = clean_text(
-            getattr(result, "text", None) or getattr(result, "content", None) or getattr(result, "body", "")
-        )
+def _exa_fetch_sync(query: str, max_results: int) -> list[dict]:
+    """Blocking fetch for a single query; wrapped in a thread by asyncio."""
+    out = []
+    resp = exa.search_and_contents(query, text=True, num_results=max_results)
+    for r in getattr(resp, "results", []) or []:
+        url = getattr(r, "url", "")
+        title = clean_text(getattr(r, "title", ""))
+        snippet = clean_text(getattr(r, "snippet", "") or getattr(r, "summary", ""))
+        full_text = clean_text(getattr(r, "text", None) or getattr(r, "content", None) or getattr(r, "body", ""))
         score = compute_severity_score(full_text)
-        label = score_to_label(score)
-
-        articles.append({
+        out.append({
             "url": url,
             "title": title,
             "snippet": snippet,
             "full_text": full_text,
             "score": score,
-            "label": label
+            "label": score_to_label(score),
         })
-    return articles
+    return out
+
+async def exa_search_and_fetch(query: str, sem: asyncio.Semaphore) -> list[dict]:
+    async with sem:
+        try:
+            return await asyncio.to_thread(_exa_fetch_sync, query, MAX_RESULTS_PER_QUERY)
+        except Exception as e:
+            print(f"  ⚠ Error fetching '{query}': {e}")
+            return []
 
 # ------------------ MONITORING ------------------
 SEARCH_QUERIES = [
@@ -114,47 +115,45 @@ SEARCH_QUERIES = [
     "site:worldview.stratfor.com India power outage OR infrastructure failure OR grid collapse",
     "site:worldview.stratfor.com India cyberattack OR critical infrastructure hack",
     "site:worldview.stratfor.com India natural disaster OR cyclone OR flood OR earthquake",
-    "site:worldview.stratfor.com India economic disruption OR food shortage OR fuel shortage OR Trump tarrifs"
+    "site:worldview.stratfor.com India economic disruption OR food shortage OR fuel shortage OR Trump tarrifs",
 ]
 
-def run_agent():
-    all_articles = []
+async def run_agent_async():
+    print("Starting Stratfor → India-focused monitoring agent (concurrent)\n")
+    sem = asyncio.Semaphore(MAX_CONCURRENCY)
+    tasks = [exa_search_and_fetch(q, sem) for q in SEARCH_QUERIES]
+    results_per_query = await asyncio.gather(*tasks)
 
-    print("Starting Stratfor → India-focused monitoring agent\n")
-    for idx, query in enumerate(SEARCH_QUERIES, start=1):
-        print(f"[{idx}/{len(SEARCH_QUERIES)}] Searching: {query}")
-        try:
-            articles = exa_search_and_fetch(query)
-            print(f"  -> Found {len(articles)} articles")
-            all_articles.extend(articles)
-        except Exception as e:
-            print(f"  ⚠ Error fetching results for query: {e}")
+    # flatten
+    all_articles = [item for sub in results_per_query for item in sub]
 
-    # Remove duplicates by URL
-    seen = set()
-    unique_articles = []
+    # dedupe by URL
+    seen, unique = set(), []
     for a in all_articles:
-        if a["url"] not in seen:
-            unique_articles.append(a)
+        if a["url"] and a["url"] not in seen:
             seen.add(a["url"])
+            unique.append(a)
 
-    # Sort by score descending
-    unique_articles.sort(key=lambda x: x["score"], reverse=True)
+    # sort by severity score desc
+    unique.sort(key=lambda x: x["score"], reverse=True)
 
-    # Save JSON output
+    # write JSON
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(unique_articles, f, indent=2, ensure_ascii=False)
+        json.dump(unique, f, indent=2, ensure_ascii=False)
 
-    # Summary
+    # print summary
     counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for a in unique_articles:
+    for a in unique:
         counts[a["label"]] += 1
 
     print("\n=== Summary ===")
-    print(f"Total articles: {len(unique_articles)}")
+    print(f"Total unique articles: {len(unique)}")
     print(f"By severity: {counts}")
     print(f"Output JSON: {os.path.abspath(OUTPUT_FILE)}")
     print("Done.")
+
+def run_agent():
+    asyncio.run(run_agent_async())
 
 # ------------------ MAIN ------------------
 if __name__ == "__main__":
