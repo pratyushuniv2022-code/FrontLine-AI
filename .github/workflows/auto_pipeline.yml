@@ -2,55 +2,100 @@ name: Scrape → Summarize → Publish (12h)
 
 on:
   schedule:
-    - cron: "0 */12 * * *"   # every 12 hours (UTC)
+    - cron: "0 */12 * * *"   # every 12 hours (UTC) ≈ 05:30 & 17:30 IST
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: auto-pipeline
+  cancel-in-progress: true
+
 jobs:
   run:
     runs-on: ubuntu-latest
-
     steps:
+      # -----------------------------
+      # 🧩 Checkout the repository
+      # -----------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # -----------------------------
+      # 🧩 Setup Python environment
+      # -----------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # -----------------------------
+      # 🧩 Install dependencies
+      # -----------------------------
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
+          python -m nltk.downloader punkt
 
-      - name: Debug repo structure
-        run: |
-          pwd
-          ls -R
-
-      - name: Scrape
+      # -----------------------------
+      # 🧩 Run Scraper
+      # -----------------------------
+      - name: Scrape data from Stratfor
         env:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-          MAX_RESULTS: 15
+          MAX_RESULTS: 10  # smaller batch for faster runs
         run: |
+          echo "🚀 Starting scraper with MAX_RESULTS=${MAX_RESULTS}"
           python stratfor_india_agent.py
           mkdir -p data
-          cp stratfor_feed_india.json data/latest_raw.json || echo "No raw file found."
+          cp data/latest_raw.json data/latest_raw_backup.json || echo "No raw file found."
 
-      - name: Summarize
+      # -----------------------------
+      # 🧩 Run Summarization
+      # -----------------------------
+      - name: Summarize articles
         env:
-          EXTRACT_SENTENCES: 6
+          EXTRACT_SENTENCES: 8
         run: |
+          echo "🧠 Running summarizer with EXTRACT_SENTENCES=${EXTRACT_SENTENCES}"
           python summarization_stratfor.py
           mkdir -p data
-          cp stratfor_feed_india_extractive.json data/latest_summary.json || echo "No summary file found."
+          cp data/latest_summary.json data/latest_summary_backup.json || echo "No summary file found."
 
+      # -----------------------------
+      # 🧩 Debug Summary
+      # -----------------------------
+      - name: Generate debug summary
+        run: |
+          if [ -f "data/latest_summary.json" ]; then
+            echo "✅ Summary JSON found!"
+            echo "---- Article Count ----"
+            jq '. | length' data/latest_summary.json || echo "jq not available"
+            echo "------------------------"
+          else
+            echo "⚠️ No summary JSON found."
+          fi
+
+      # -----------------------------
+      # 🧩 Commit updated data files
+      # -----------------------------
       - name: Commit data changes
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/latest_raw.json data/latest_summary.json 2>/dev/null || true
-          git diff --cached --quiet || git commit -m "auto: update data $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git add data/*.json || true
+          git diff --cached --quiet || git commit -m "auto: updated data $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           git push || true
+
+      # -----------------------------
+      # 🧩 Upload artifacts (downloadable JSONs)
+      # -----------------------------
+      - name: Upload data artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stratfor-data-${{ github.run_id }}
+          path: |
+            data/latest_raw.json
+            data/latest_summary.json
