@@ -48,6 +48,7 @@ jobs:
           MAX_RESULTS: 10  # smaller batch for faster runs
         run: |
           echo "🚀 Starting scraper with MAX_RESULTS=${MAX_RESULTS}"
+          echo "🔐 Exa API Key loaded: $([[ -n "$EXA_API_KEY" ]] && echo 'yes' || echo 'no')"
           python stratfor_india_agent.py
           mkdir -p data
           cp data/latest_raw.json data/latest_raw_backup.json || echo "No raw file found."
