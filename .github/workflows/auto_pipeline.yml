@@ -1,0 +1,63 @@
+name: Scrape → Summarize → Publish (12h)
+
+on:
+  schedule:
+    - cron: "0 */12 * * *"   # every 12 hours (UTC) ≈ 05:30 & 17:30 IST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-pipeline
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install deps
+        run: |
+          pip install -r scraper/requirements.txt
+
+      - name: Scrape
+        env:
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: |
+          python scraper/scrape_stratfor_india.py
+          test -s data/latest_raw.json
+
+      - name: Summarize
+        run: |
+          python scraper/extractive_summarize_clean.py
+          test -s data/latest_summary.json
+
+      - name: (Optional) keep history snapshots
+        run: |
+          ts=$(date -u +'%Y%m%d_%H%M%S')
+          cp data/latest_raw.json data/raw_$ts.json
+          cp data/latest_summary.json data/summary_$ts.json
+
+      - name: Commit data changes
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/latest_raw.json data/latest_summary.json data/raw_*.json data/summary_*.json 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "auto: data update $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git push || true
+
+      - name: Upload artifacts (for easy download per run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-${{ github.run_id }}
+          path: |
+            data/latest_raw.json
+            data/latest_summary.json
