@@ -25,3 +25,4 @@ data/*.jsonl
 health/ 
 __pycache__/ 
 .venv/ 
+.env
