@@ -13,8 +13,10 @@ if not EXA_API_KEY:
     raise RuntimeError("EXA_API_KEY is missing. Set it as an env var / GitHub Actions secret.")
 
 # write into repo/data for the workflow
-OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "latest_raw.json")
-os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+BASE_DIR = os.path.join(os.getcwd(), "data")  # <- write inside repo /data
+os.makedirs(BASE_DIR, exist_ok=True)
+
+OUTPUT_FILE = os.path.join(BASE_DIR, "latest_raw.json")
 
 # performance tweaks
 MAX_RESULTS_PER_QUERY = int(os.getenv("MAX_RESULTS", 10))         # ↓ from 20 for faster runs
