@@ -1,0 +1,23 @@
+# prevent huge contexts and secrets
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite
+.env
+.venv
+venv/
+dist/
+build/
+
+# local caches & data that regenerate at runtime
+.llm_cache/
+llm_cache/
+excel_agent_data/
+crime_agent_logs/
+safety_logs/
+admin_reports/
+
+# node / other common junk
+node_modules/

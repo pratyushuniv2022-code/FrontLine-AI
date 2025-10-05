@@ -1,0 +1,14 @@
+[2025-10-05T09:13:11.668404Z] USER: say me about the data?
+[2025-10-05T09:13:20.494922Z] ASSISTANT: The data has:
+* 120 rows and 4 columns
+* Top areas: North, South, East, West (each with 30 occurrences)
+* Top crime types: Theft, Assault, Fraud, Burglary (each with 30 occurrences)
+
+| Column Name | Description |
+| --- | --- |
+| date | Date of the crime |
+| area | Area where the crime occurred |
+| crime_type | Type of crime |
+| value | Severity of the crime |
+
+To better understand the data, additional information on patrol hours, lighting, and CCTV coverage would be helpful.
