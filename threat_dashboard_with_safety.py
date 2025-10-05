@@ -38,6 +38,33 @@ os.makedirs(USER_SNAPSHOTS_DIR, exist_ok=True)
 
 # Directories
 BASE_DIR = Path(__file__).parent.resolve()
+# =========================================================
+# NLTK bootstrap (use repo-root ./nltk_data; optional fallback)
+# =========================================================
+try:
+    import nltk
+    # Prefer env override, else use the repo's ./nltk_data folder
+    NLTK_DATA_PATH = os.getenv("NLTK_DATA") or str(BASE_DIR / "nltk_data")
+    os.makedirs(NLTK_DATA_PATH, exist_ok=True)
+
+    # Put our path first so NLTK looks here before anywhere else
+    nltk.data.path[:] = [NLTK_DATA_PATH] + [p for p in nltk.data.path if p != NLTK_DATA_PATH]
+
+    # Verify punkt + stopwords exist; optionally download only if explicitly allowed
+    try:
+        nltk.data.find("tokenizers/punkt")
+        nltk.data.find("corpora/stopwords")
+    except LookupError:
+        if os.getenv("ALLOW_NLTK_DOWNLOADS", "0") == "1":
+            nltk.download("punkt", download_dir=NLTK_DATA_PATH, quiet=True)
+            nltk.download("stopwords", download_dir=NLTK_DATA_PATH, quiet=True)
+        else:
+            st.warning(
+                f"NLTK data not found at {NLTK_DATA_PATH}. "
+                "Commit ./nltk_data (punkt + stopwords) or set ALLOW_NLTK_DOWNLOADS=1 to fetch at runtime."
+            )
+except Exception as _nltk_e:
+    st.warning(f"NLTK init failed: {_nltk_e}")
 LLM_CACHE_DIR = BASE_DIR / "llm_cache"; LLM_CACHE_DIR.mkdir(exist_ok=True)
 EXCEL_AGENT_DIR = BASE_DIR / "excel_agent_data"; EXCEL_AGENT_DIR.mkdir(exist_ok=True)
 CRIME_LOG_DIR = BASE_DIR / "crime_agent_logs"; CRIME_LOG_DIR.mkdir(exist_ok=True)
