@@ -53,3 +53,8 @@ user_snapshots/
 .DS_Store
 .dockerignore
 Dockerfile
+meera/
+__pycache__/
+*.pyc
+.DS_Store
+*.zip
