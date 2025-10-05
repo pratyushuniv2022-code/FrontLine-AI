@@ -4,6 +4,9 @@
 Youtube video link of live presentation 
 https://youtu.be/oE9aobRJSOo
 
+This is the working link of the prototype version of the application
+https://trialexcelchatpy-zefs9qjxb3an7pad7q4mnv.streamlit.app/
+
 🧠 Objective
 
 To build an autonomous, LLM-assisted threat analysis dashboard that continuously:
