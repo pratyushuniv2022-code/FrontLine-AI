@@ -26,3 +26,30 @@ health/
 __pycache__/ 
 .venv/ 
 .env
+
+# --- Environment and secrets ---
+.env
+*.env
+.env.*
+
+# --- Runtime and generated data ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.tmp
+
+# --- Local agent data and logs ---
+llm_cache/
+excel_agent_data/
+crime_agent_logs/
+safety_logs/
+admin_reports/
+user_snapshots/
+
+# --- Streamlit and Docker ---
+.streamlit/
+.DS_Store
+.dockerignore
+Dockerfile
