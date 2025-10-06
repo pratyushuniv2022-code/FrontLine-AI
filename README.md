@@ -4,8 +4,7 @@
 Youtube video link of live presentation 
 https://youtu.be/oE9aobRJSOo
 
-This is the working link of the prototype version of the application
-https://trialexcelchatpy-zefs9qjxb3an7pad7q4mnv.streamlit.app/
+This is the deployed link of my ai agent do play and suggest me for any improvements https://autonomous-scraper.fly.dev/
 
 🧠 Objective
 
